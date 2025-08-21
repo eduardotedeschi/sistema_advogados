@@ -1,25 +1,50 @@
 from docx import Document
 from datetime import datetime
-import re
+import locale
+
+# Define o idioma do sistema para português do Brasil
+locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
 
 # ----------------- Inputs -----------------
-nome = input("Nome do cliente: ")
-nacionalidade = input("Nacionalidade do cliente: ")
-estadoCivil = input("Estado civíl do cliente: ")
+nome = input("Nome completo do cliente: ").title() \
+                              .replace(" Da ", " da ") \
+                              .replace(" De ", " de ") \
+                              .replace(" Do ", " do ") \
+                              .replace(" Dos ", " dos ") \
+                              .replace(" Das ", " das ") \
+                              .replace(" E ", " e ") \
+                              .replace(" Em ", " em ")
+nacionalidade = input("Nacionalidade do cliente: ").lower()
+estadoCivil = input("Estado civíl do cliente: ").lower()
 profissao = input("Profissão do cliente: ")
-rg = input("Rg do cliente: ")
-cpf = input("Cpf do cliente: ")
-logradouro = input("Rua do cliente: ")
+rg = input("RG do cliente: ")
+cpf = input("CPF do cliente: ")
+logradouro = input("Rua do cliente: ").capitalize()
 numeroResidencia = input("Número da residência do cliente: ")
-bairro = input("Bairro do cliente: ")
-cidade = input("Cidade de cliente: ")
-uf = input("UF do cliente: ")
+bairro = input("Bairro do cliente: ").capitalize()
+cidade = input("Cidade de cliente: ").title() \
+                                     .replace(" Da ", " da ") \
+                                     .replace(" De ", " de ") \
+                                     .replace(" Do ", " do ") \
+                                     .replace(" Dos ", " dos ") \
+                                     .replace(" Das ", " das ") \
+                                     .replace(" Em ", " em ")
+uf = input("UF do cliente: ").upper()
 cep = input("CEP do cliente: ")
 telefone = input("Telefone do cliente: ")
-email = input("Email do cliente: ")
+email = input("Email do cliente: ").lower()
+nomeReu = input("Nome completo do Réu: ").title() \
+                              .replace(" Da ", " da ") \
+                              .replace(" De ", " de ") \
+                              .replace(" Do ", " do ") \
+                              .replace(" Dos ", " dos ") \
+                              .replace(" Das ", " das ") \
+                              .replace(" E ", " e ") \
+                              .replace(" Em ", " em ")
+cnpjReu = input("CNPJ do Réu: ")
 
 # ----------------- Documento -----------------
-doc = Document(r"C:\Users\dudu\Documents\CLIENTES WEB\sistema_advogados\Projeto\editar_variaveis_1.0\Contrato.docx")
+doc = Document(r"C:\Users\dudu\Documents\CLIENTES WEB\sistema_advogados\Projeto\editar_variaveis_1.0\banco_de_documentos\Contrato.docx")
 
 # ----------------- Dados -----------------
 dados = {
@@ -38,8 +63,10 @@ dados = {
     "{{TELEFONE}}": telefone,
     "{{EMAIL}}": email,
     "{{DIA}}": str(datetime.now().day),
-    "{{MES}}": str(datetime.now().month),
-    "{{ANO}}": str(datetime.now().year)
+    "{{MES}}": datetime.now().strftime('%B').capitalize(),
+    "{{ANO}}": str(datetime.now().year),
+    "{{NOMER_REU}}": nomeReu,
+    "{{CNPJ_REU}}": cnpjReu
 }
 
 # ----------------- Função para substituir placeholders -----------------
@@ -88,6 +115,6 @@ def substituir_placeholders_elemento(elemento, dados):
 substituir_placeholders_elemento(doc, dados)
 
 # ----------------- Salvar -----------------
-doc.save(rf"C:\Users\dudu\Documents\CLIENTES WEB\sistema_advogados\Projeto\editar_variaveis_1.0\Contrato - {nome}.docx")
+doc.save(rf"C:\Users\dudu\Documents\CLIENTES WEB\sistema_advogados\Projeto\editar_variaveis_1.0\banco_de_documentos\Contrato - {nome}.docx")
 
 print(f"Documento gerado com sucesso: Contrato - {nome}.docx")
