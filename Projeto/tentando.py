@@ -8,13 +8,13 @@ import darkdetect
 root = Tk()
 
 class SearchableComboBox():
-    def __init__(self, parent, options) -> None:  # << agora recebe parent
+    def __init__(self, parent, options, x, y, w) -> None:  # << agora recebe parent
         self.dropdown_id = None
         self.options = options
 
         # Create a Text widget for the entry field
         wrapper = ttk.Frame(parent)  # << usa o parent, não root
-        wrapper.place(relx=0.45, rely=0.05, relwidth=0.15)  # posiciona no frame certo
+        wrapper.place(relx=x, rely=y, relwidth=w)  # posiciona no frame certo
 
         self.entry = ttk.Entry(wrapper, width=14)
         self.entry.bind("<KeyRelease>", self.on_entry_key)
@@ -63,18 +63,147 @@ class Funcs():
     def gerenciar_clientes(self):
         #Criação LABEL e ENTRADA do nome completo
         self.lb_nome = ttk.Label(self.frame_2, text = "Nome Completo*")
-        self.lb_nome.place(relx= 0.03, rely=0.02)
+        self.lb_nome.place(relx= 0.04, rely=0.02)
 
         self.nome_entry = ttk.Entry(self.frame_2)
-        self.nome_entry.place(relx= 0.02, rely=0.05, relwidth=0.4)
+        self.nome_entry.place(relx= 0.03, rely=0.05, relwidth=0.4)
 
-        #Criação LABEL e LISTA DE ENTRADAS da nacionalidade
+        #Criação LABEL, LISTA DE ENTRADAS e COMBOBOX da nacionalidade
         self.lb_nacionalidade = ttk.Label(self.frame_2, text = "Nacionalidade*")
-        self.lb_nacionalidade.place(relx= 0.46, rely=0.02)
+        self.lb_nacionalidade.place(relx= 0.47, rely=0.02)
 
-        opc_nacionalidade = ["", "afegão", "afegã", "albanês", "albanesa", "alemão", "alemã", "americano", "americana", "andorrano", "andorrana", "angolano", "angolana", "antiguano", "antiguana", "argentino", "argentina", "armênio", "armênia", "australiano", "australiana", "austríaco", "austríaca", "azerbaijano", "azerbaijana", "bahamense", "bangladeshiano", "bangladeshiana", "barbadiano", "barbadiana", "belga", "belizenho", "belizenha", "beninense", "bielorrusso", "bielorrussa", "boliviano", "boliviana", "bósnio", "bósnia", "botsuanês", "botsuanesa", "brasileiro", "brasileira", "britânico", "britânica", "búlgaro", "búlgara", "burquinense", "burundês", "burundesa", "butanês", "butanesa", "cabo-verdiano", "cabo-verdiana", "camaronês", "camaronesa", "cambojano", "cambojana", "canadense", "catariano", "catarina", "chileno", "chilena", "chinês", "chinesa", "cingapuriano", "cingapuriana", "colombiano", "colombiana", "congolês", "congolesa", "coreano do norte", "coreana do norte", "coreano do sul", "coreana do sul", "costarriquenho", "costarriquenha", "croata", "cubano", "cubana", "dinamarquês", "dinamarquesa", "dominicano", "dominicana", "egípcio", "egípcia", "equatoriano", "equatoriana", "eritreu", "eritreia", "escocês", "escocesa", "eslovaco", "eslovaca", "esloveno", "eslovena", "espanhol", "espanhola", "estoniano", "estoniana", "etíope", "filipino", "filipina", "finlandês", "finlandesa", "francês", "francesa", "gabonês", "gabonesa", "galês", "galesa", "ganês", "ganesa", "georgiano", "georgiana", "grego", "grega", "guatemalteco", "guatemalteca", "guianês", "guianesa", "guineense", "haitiano", "haitiana", "holandês", "holandesa", "hondurenho", "hondurenha", "húngaro", "húngara", "iemenita", "indiano", "indiana", "indonésio", "indonésia", "inglês", "inglesa", "iraquiano", "iraquiana", "iraniano", "iraniana", "irlandês", "irlandesa", "islandês", "islandesa", "israelense", "italiano", "italiana", "jamaicano", "jamaicana", "japonês", "japonesa", "jordano", "jordana", "kazakhstanês", "kazakhstanesa", "keniano", "keniana", "kiribati", "kuwaitiano", "kuwaitiana", "letão", "letona", "libanês", "libanesa", "liberiano", "liberiana", "líbio", "líbia", "liechtensteiniano", "liechtensteiniana", "lituano", "lituana", "luxemburguês", "luxemburguesa", "macedônio", "macedônia", "malaio", "malaia", "malawiano", "malawiana", "maliano", "maliana", "maltês", "maltesa", "marroquino", "marroquina", "mauriciano", "mauriciana", "mexicano", "mexicana", "moçambicano", "moçambicana", "moldávio", "moldávia", "monegasco", "monegasca", "mongol", "montenegrino", "montenegrina", "namibiano", "namibiana", "nepalês", "nepalesa", "nicaraguense", "nigeriano", "nigeriana", "norueguês", "norueguesa", "neozelandês", "neozelandesa", "omanês", "omanesa", "paquistanês", "paquistanesa", "palestino", "palestina", "panamenho", "panamenha", "papua nova guiné", "paraguaio", "paraguaia", "peruano", "peruana", "polonês", "polonesa", "portorriquenho", "portorriquenha", "português", "portuguesa", "qatari", "qatari", "queniano", "queniana", "quirguiz", "quirguiz", "romeno", "romena", "ruandês", "ruandesa", "russo", "russa", "salvadorenho", "salvadorenha", "samoano", "samoana", "sanmarinense", "sanmarinense", "saudita", "saudita", "senegalês", "senegalesa", "sérvio", "sérvia", "somaliano", "somaliana", "sudanês", "sudanesa", "sueco", "sueca", "suíço", "suíça", "surinamês", "surinamesa", "tailandês", "tailandesa", "tanzaniano", "tanzaniana", "timorense", "timorense", "togolês", "togolesa", "turco", "turca", "turcomano", "turcomana", "ucraniano", "ucraniana", "ugandês", "ugandesa", "uruguaio", "uruguaia", "uzbeque", "uzbeque", "venezuelano", "venezuelana", "vietnamita", "vietnamita", "zambiano", "zambiana", "zimbabuano", "zimbabuana"]
+        opc_nacionalidade = ["afegão", "afegã", "albanês", "albanesa", "alemão", "alemã", "americano", "americana", "andorrano", "andorrana", "angolano", "angolana", "antiguano", "antiguana", "argentino", "argentina", "armênio", "armênia", "australiano", "australiana", "austríaco", "austríaca", "azerbaijano", "azerbaijana", "bahamense", "bangladeshiano", "bangladeshiana", "barbadiano", "barbadiana", "belga", "belizenho", "belizenha", "beninense", "bielorrusso", "bielorrussa", "boliviano", "boliviana", "bósnio", "bósnia", "botsuanês", "botsuanesa", "brasileiro", "brasileira", "britânico", "britânica", "búlgaro", "búlgara", "burquinense", "burundês", "burundesa", "butanês", "butanesa", "cabo-verdiano", "cabo-verdiana", "camaronês", "camaronesa", "cambojano", "cambojana", "canadense", "catariano", "catarina", "chileno", "chilena", "chinês", "chinesa", "cingapuriano", "cingapuriana", "colombiano", "colombiana", "congolês", "congolesa", "coreano do norte", "coreana do norte", "coreano do sul", "coreana do sul", "costarriquenho", "costarriquenha", "croata", "cubano", "cubana", "dinamarquês", "dinamarquesa", "dominicano", "dominicana", "egípcio", "egípcia", "equatoriano", "equatoriana", "eritreu", "eritreia", "escocês", "escocesa", "eslovaco", "eslovaca", "esloveno", "eslovena", "espanhol", "espanhola", "estoniano", "estoniana", "etíope", "filipino", "filipina", "finlandês", "finlandesa", "francês", "francesa", "gabonês", "gabonesa", "galês", "galesa", "ganês", "ganesa", "georgiano", "georgiana", "grego", "grega", "guatemalteco", "guatemalteca", "guianês", "guianesa", "guineense", "haitiano", "haitiana", "holandês", "holandesa", "hondurenho", "hondurenha", "húngaro", "húngara", "iemenita", "indiano", "indiana", "indonésio", "indonésia", "inglês", "inglesa", "iraquiano", "iraquiana", "iraniano", "iraniana", "irlandês", "irlandesa", "islandês", "islandesa", "israelense", "italiano", "italiana", "jamaicano", "jamaicana", "japonês", "japonesa", "jordano", "jordana", "kazakhstanês", "kazakhstanesa", "keniano", "keniana", "kiribati", "kuwaitiano", "kuwaitiana", "letão", "letona", "libanês", "libanesa", "liberiano", "liberiana", "líbio", "líbia", "liechtensteiniano", "liechtensteiniana", "lituano", "lituana", "luxemburguês", "luxemburguesa", "macedônio", "macedônia", "malaio", "malaia", "malawiano", "malawiana", "maliano", "maliana", "maltês", "maltesa", "marroquino", "marroquina", "mauriciano", "mauriciana", "mexicano", "mexicana", "moçambicano", "moçambicana", "moldávio", "moldávia", "monegasco", "monegasca", "mongol", "montenegrino", "montenegrina", "namibiano", "namibiana", "nepalês", "nepalesa", "nicaraguense", "nigeriano", "nigeriana", "norueguês", "norueguesa", "neozelandês", "neozelandesa", "omanês", "omanesa", "paquistanês", "paquistanesa", "palestino", "palestina", "panamenho", "panamenha", "papua nova guiné", "paraguaio", "paraguaia", "peruano", "peruana", "polonês", "polonesa", "portorriquenho", "portorriquenha", "português", "portuguesa", "qatari", "qatari", "queniano", "queniana", "quirguiz", "quirguiz", "romeno", "romena", "ruandês", "ruandesa", "russo", "russa", "salvadorenho", "salvadorenha", "samoano", "samoana", "sanmarinense", "sanmarinense", "saudita", "saudita", "senegalês", "senegalesa", "sérvio", "sérvia", "somaliano", "somaliana", "sudanês", "sudanesa", "sueco", "sueca", "suíço", "suíça", "surinamês", "surinamesa", "tailandês", "tailandesa", "tanzaniano", "tanzaniana", "timorense", "timorense", "togolês", "togolesa", "turco", "turca", "turcomano", "turcomana", "ucraniano", "ucraniana", "ugandês", "ugandesa", "uruguaio", "uruguaia", "uzbeque", "uzbeque", "venezuelano", "venezuelana", "vietnamita", "vietnamita", "zambiano", "zambiana", "zimbabuano", "zimbabuana"]
 
-        self.nacionalidade_combo = SearchableComboBox(self.frame_2, opc_nacionalidade)
+        self.nacionalidade_combo = SearchableComboBox(self.frame_2, opc_nacionalidade, 0.46, 0.05, 0.15)
+
+        #Criação LABEL, LISTA DE ENTRADAS e COMBOBOX do estado civil
+        self.lb_estado_civil = ttk.Label(self.frame_2, text = "Estado Civil*")
+        self.lb_estado_civil.place(relx= 0.65, rely=0.02)
+
+        opc_estado_civil = ["solteiro", "solteira", "casado", "casada", "divorciado", "divorciada", "viúvo", "viúva", "separado", "separada", "união estável", "separação judicial"]
+
+        self.estado_civil_combo = SearchableComboBox(self.frame_2, opc_estado_civil, 0.64, 0.05, 0.15)
+
+        #Criação LABEL e ENTRADA da profissão
+        self.lb_profissao = ttk.Label(self.frame_2, text = "Profissão*")
+        self.lb_profissao.place(relx= 0.83, rely=0.02)
+
+        self.profissao_entry = ttk.Entry(self.frame_2)
+        self.profissao_entry.place(relx= 0.82, rely=0.05, relwidth=0.15)
+
+        #Criação LABEL e ENTRADA da rg
+        self.lb_rg = ttk.Label(self.frame_2, text = "RG*")
+        self.lb_rg.place(relx= 0.04, rely=0.11)
+
+        self.rg_entry = ttk.Entry(self.frame_2)
+        self.rg_entry.place(relx= 0.03, rely=0.14, relwidth=0.15)
+
+        #Criação LABEL e ENTRADA da cpf
+        self.lb_cpf = ttk.Label(self.frame_2, text = "CPF*")
+        self.lb_cpf.place(relx= 0.22, rely=0.11)
+
+        self.cpf_entry = ttk.Entry(self.frame_2)
+        self.cpf_entry.place(relx= 0.21, rely=0.14, relwidth=0.15)
+
+        #Criação LABEL e ENTRADA da cep
+        self.lb_cep = ttk.Label(self.frame_2, text = "CEP*")
+        self.lb_cep.place(relx= 0.40, rely=0.11)
+
+        self.cep_entry = ttk.Entry(self.frame_2)
+        self.cep_entry.place(relx= 0.39, rely=0.14, relwidth=0.15)
+
+        #Criação LABEL, LISTA DE ENTRADAS e COMBOBOX da uf
+        self.lb_uf = ttk.Label(self.frame_2, text = "UF*")
+        self.lb_uf.place(relx= 0.58, rely=0.11)
+
+        self.lb_uf_entry = ttk.Entry(self.frame_2)
+        self.lb_uf_entry.place(relx= 0.57, rely=0.14, relwidth=0.05)
+
+        #Criação LABEL e ENTRADA da cidade
+        self.lb_cidade = ttk.Label(self.frame_2, text = "Cidade*")
+        self.lb_cidade.place(relx= 0.66, rely=0.11)
+
+        self.cidade_entry = ttk.Entry(self.frame_2)
+        self.cidade_entry.place(relx= 0.65, rely=0.14, relwidth=0.18)
+
+        #Criação LABEL e ENTRADA da rua
+        self.lb_rua = ttk.Label(self.frame_2, text = "Rua*")
+        self.lb_rua.place(relx= 0.04, rely=0.20)
+
+        self.rua_entry = ttk.Entry(self.frame_2)
+        self.rua_entry.place(relx= 0.03, rely=0.23, relwidth=0.3)
+
+        #Criação LABEL e ENTRADA do numero rua
+        self.lb_n_rua = ttk.Label(self.frame_2, text = "Nº Rua*")
+        self.lb_n_rua.place(relx= 0.37, rely=0.20)
+
+        self.n_rua_entry = ttk.Entry(self.frame_2)
+        self.n_rua_entry.place(relx= 0.36, rely=0.23, relwidth=0.1)
+
+        #Criação LABEL e ENTRADA do bairro
+        self.lb_bairro = ttk.Label(self.frame_2, text = "Bairro*")
+        self.lb_bairro.place(relx= 0.50, rely=0.20)
+
+        self.bairro_entry = ttk.Entry(self.frame_2)
+        self.bairro_entry.place(relx= 0.49, rely=0.23, relwidth=0.25)
+
+        #Criação LABEL e ENTRADA do telefone
+        self.lb_telefone = ttk.Label(self.frame_2, text = "Telefone")
+        self.lb_telefone.place(relx= 0.78, rely=0.20)
+
+        self.telefone_entry = ttk.Entry(self.frame_2)
+        self.telefone_entry.place(relx= 0.77, rely=0.23, relwidth=0.15)
+
+        #Criação LABEL e ENTRADA do email
+        self.lb_email = ttk.Label(self.frame_2, text = "Email")
+        self.lb_email.place(relx= 0.04, rely=0.29)
+
+        self.email_entry = ttk.Entry(self.frame_2)
+        self.email_entry.place(relx= 0.03, rely=0.32, relwidth=0.25)
+
+        #Criação LABEL e ENTRADA do nome réu
+        self.lb_nome_reu = ttk.Label(self.frame_2, text = "Nome Completo Réu")
+        self.lb_nome_reu.place(relx= 0.32, rely=0.29)
+
+        self.nome_reu_entry = ttk.Entry(self.frame_2)
+        self.nome_reu_entry.place(relx= 0.31, rely=0.32, relwidth=0.4)
+
+        #Criação LABEL e ENTRADA do cnpj réu
+        self.lb_cnpj_reu = ttk.Label(self.frame_2, text = "CNPJ Réu")
+        self.lb_cnpj_reu.place(relx= 0.75, rely=0.29)
+
+        self.cnpj_reu_entry = ttk.Entry(self.frame_2)
+        self.cnpj_reu_entry.place(relx= 0.74, rely=0.32, relwidth=0.23)
+
+        #Criação botão adicionar cliente
+        self.bt_add_cliente = ttk.Button(self.frame_2, text="Adicionar Cliente", style='Accent.TButton')
+        self.bt_add_cliente.place(relx= 0.03, rely=0.44, relwidth=0.17)
+
+        #Criação botão atualizar cliente
+        self.bt_update_cliente = ttk.Button(self.frame_2, text="Atualizar Cliente", style='Accent.TButton')
+        self.bt_update_cliente.place(relx= 0.23, rely=0.44, relwidth=0.17)
+
+        #Criação botão deletar cliente
+        self.bt_del_cliente = ttk.Button(self.frame_2, text="Deletar Cliente", style='Accent.TButton')
+        self.bt_del_cliente.place(relx= 0.43, rely=0.44, relwidth=0.17)
+
+        #Criação LABEL e ENTRADA do CPF para buscar cliente
+        self.lb_cpf_busca = ttk.Label(self.frame_2, text = "Buscar CPF")
+        self.lb_cpf_busca.place(relx= 0.67, rely=0.41)
+
+        self.cpf_busca_entry = ttk.Entry(self.frame_2)
+        self.cpf_busca_entry.place(relx= 0.66, rely=0.44, relwidth=0.13)
+
+        #Criação botão buscar cliente
+        self.bt_search_cliente = ttk.Button(self.frame_2, text="Buscar Cliente", style='Accent.TButton')
+        self.bt_search_cliente.place(relx= 0.81, rely=0.44, relwidth=0.15)
+
+        #Criação botão limpar 
+        self.bt_limpar = ttk.Button(self.frame_2, text="Limpar")
+        self.bt_limpar.place(relx= 0.81, rely=0.39, relwidth=0.15)
+
+        
+        
 
 class App(Funcs):        
 
