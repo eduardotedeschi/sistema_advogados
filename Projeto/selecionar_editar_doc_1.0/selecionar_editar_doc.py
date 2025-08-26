@@ -1,19 +1,18 @@
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import subprocess
 from sqlcipher3 import dbapi2 as sqlite
-from docx import Document
-from datetime import datetime
-import locale
 
 # -----------------------------
 # Configurações
 # -----------------------------
-caminho_banco = os.path.join(os.path.expanduser("~"), "Documents", "CLIENTES WEB", "sistema_advogados", "Projeto", "selecionar_editar_doc_1.0", "bd_advocacia_db.db")
+caminho_banco = os.path.join(
+    os.path.expanduser("~"),
+    "Documents", "CLIENTES WEB", "sistema_advogados",
+    "Projeto", "selecionar_editar_doc_1.0", "bd_advocacia_db.db"
+)
 os.makedirs(os.path.dirname(caminho_banco), exist_ok=True)
-
-SENHA = "minha_senha_forte"  # pode depois usar Keyring
+SENHA = "minha_senha_forte"
 
 # -----------------------------
 # Funções do banco
@@ -59,7 +58,6 @@ def init_db():
 def inserir_cliente(dados):
     try:
         conn, cursor = conectar()
-
         cursor.execute("""
             INSERT INTO clientes (
                 nome, nacionalidade, estado_civil, profissao, rg, cpf, logradouro,
@@ -72,22 +70,18 @@ def inserir_cliente(dados):
             dados.get("Telefone", ""), dados.get("Email", ""),
             dados.get("Nome do Réu", ""), dados.get("CNPJ do Réu", "")
         ))
-
         conn.commit()
         conn.close()
-
         messagebox.showinfo("Sucesso", "Cliente inserido com sucesso!")
-
     except sqlite.IntegrityError as e:
-        messagebox.showerror("Erro", f"Erro de integridade (dado duplicado ou inválido): {e}")
+        messagebox.showerror("Erro", f"Erro de integridade: {e}")
     except Exception as e:
         messagebox.showerror("Erro", f"Ocorreu um erro ao inserir o cliente: {e}")
-        
     carregar_clientes()
 
 def listar_clientes():
     conn, cursor = conectar()
-    cursor.execute("SELECT id, nome FROM clientes")
+    cursor.execute("SELECT id, nome, cpf FROM clientes")
     clientes = cursor.fetchall()
     conn.close()
     return clientes
@@ -113,34 +107,37 @@ def listar_modelos():
     conn.close()
     return modelos
 
-def exportar_modelo(modelo_id, destino):
-    conn, cursor = conectar()
-    cursor.execute("SELECT nome, arquivo FROM modelos WHERE id=?", (modelo_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        nome, blob = row
-        os.makedirs(destino, exist_ok=True)
-        arquivo_destino = os.path.join(destino, f"{nome}.docx")
-        with open(arquivo_destino, "wb") as f:
-            f.write(blob)
-        return arquivo_destino
-    return None
+# -----------------------------
+# Classe AutocompleteCombobox
+# -----------------------------
+class AutocompleteCombobox(ttk.Combobox):
+    def set_completion_list(self, completion_list):
+        self._completion_list = sorted(completion_list, key=str.lower)
+        self['values'] = self._completion_list
+        self.bind('<KeyRelease>', self._autocomplete)
+
+    def _autocomplete(self, event):
+        if event.keysym in ("BackSpace", "Left", "Right", "Up", "Down"):
+            return
+        value = self.get()
+        if value == "":
+            self['values'] = self._completion_list
+            return
+        matches = [item for item in self._completion_list if value.lower() in item.lower()]
+        self['values'] = matches
+        if matches:
+            self.event_generate('<Down>')
 
 # -----------------------------
-# Funções da GUI
+# Funções GUI
 # -----------------------------
 def carregar_clientes():
-    clientes = listar_clientes()
-    nomes = [m[1] for m in clientes]
-    combobox_clientes['values'] = nomes
-    return clientes
+    nomes = [c[1] for c in listar_clientes()]
+    combobox_clientes.set_completion_list(nomes)
 
 def carregar_modelos():
-    modelos = listar_modelos()
-    nomes = [m[1] for m in modelos]
-    combobox_modelos['values'] = nomes
-    return modelos
+    nomes = [m[1] for m in listar_modelos()]
+    combobox_modelos.set_completion_list(nomes)
 
 def adicionar_cliente():
     janela = tk.Toplevel(root)
@@ -152,44 +149,25 @@ def adicionar_cliente():
     frame.pack(fill="both", expand=True)
 
     campos = {
-        "Nome": 100,
-        "Nacionalidade": 50,
-        "Estado Civil": 50,
-        "Profissão": 50,
-        "RG": 13,
-        "CPF": 14,
-        "Logradouro": 200,
-        "Número da Residência": 10,
-        "Bairro": 100,
-        "Cidade": 100,
-        "UF": 2,
-        "CEP": 10,
-        "Telefone": 20,
-        "Email": 100,
-        "Nome do Réu": 100,
-        "CNPJ do Réu": 20
+        "Nome": 100, "Nacionalidade": 50, "Estado Civil": 50, "Profissão": 50,
+        "RG": 13, "CPF": 14, "Logradouro": 200, "Número da Residência": 10,
+        "Bairro": 100, "Cidade": 100, "UF": 2, "CEP": 10, "Telefone": 20,
+        "Email": 100, "Nome do Réu": 100, "CNPJ do Réu": 20
     }
 
     entradas = {}
-
     for i, (campo, limite) in enumerate(campos.items()):
         row = i % 8
         col = i // 8
-
-        label = tk.Label(frame, text=campo + ":", anchor="w")
-        label.grid(row=row, column=col*2, padx=5, pady=5, sticky="w")
-
+        tk.Label(frame, text=campo+":", anchor="w").grid(row=row, column=col*2, padx=5, pady=5, sticky="w")
         vcmd = (janela.register(lambda P, l=limite: len(P) <= l), "%P")
         entry = tk.Entry(frame, width=30, validate="key", validatecommand=vcmd)
-        entry.grid(row=row, column=col*2 + 1, padx=5, pady=5, sticky="w")
-
+        entry.grid(row=row, column=col*2+1, padx=5, pady=5, sticky="w")
         entradas[campo] = entry
 
     def formatar(campo, valor):
         if campo in ["Nome", "Nome do Réu"]:
-            return valor.title().replace(" Da ", " da ").replace(" De ", " de ") \
-                .replace(" Do ", " do ").replace(" Dos ", " dos ") \
-                .replace(" Das ", " das ").replace(" E ", " e ").replace(" Em ", " em ")
+            return valor.title()
         elif campo in ["Nacionalidade", "Estado Civil", "Email"]:
             return valor.lower()
         elif campo in ["Logradouro", "Bairro"]:
@@ -199,19 +177,15 @@ def adicionar_cliente():
         return valor
 
     def confirmar():
-        dados = {}
-        for campo, entry in entradas.items():
-            valor = entry.get().strip()
-            if not valor and campo not in ["Telefone", "Email", "Nome do Réu", "CNPJ do Réu"]:
+        dados = {campo: formatar(campo, entry.get().strip()) for campo, entry in entradas.items()}
+        for campo in ["Nome", "Nacionalidade", "Estado Civil", "Profissão", "RG", "CPF", "Logradouro", "Número da Residência", "Bairro", "Cidade", "UF", "CEP"]:
+            if not dados[campo]:
                 messagebox.showwarning("Aviso", f"O campo {campo} não pode estar vazio!")
                 return
-            dados[campo] = formatar(campo, valor)
-
         inserir_cliente(dados)
         janela.destroy()
 
-    btn_adicionar = tk.Button(janela, text="Adicionar", command=confirmar)
-    btn_adicionar.pack(pady=20)
+    tk.Button(janela, text="Adicionar", command=confirmar).pack(pady=20)
 
 def adicionar_modelo():
     janela = tk.Toplevel(root)
@@ -234,50 +208,43 @@ def adicionar_modelo():
         if caminho:
             label_caminho.config(text=caminho)
 
-    btn_escolher = tk.Button(janela, text="Escolher Arquivo", command=escolher_arquivo)
-    btn_escolher.grid(row=2, column=1, padx=5, pady=5, sticky="e")
+    tk.Button(janela, text="Escolher Arquivo", command=escolher_arquivo).grid(row=2, column=1, padx=5, pady=5, sticky="e")
 
     def confirmar():
         nome = entry_nome.get().strip()
         caminho = label_caminho.cget("text")
-        if not nome:
-            messagebox.showwarning("Aviso", "O nome não pode estar vazio!")
-            return
-        if not caminho:
-            messagebox.showwarning("Aviso", "Selecione um arquivo!")
+        if not nome or not caminho:
+            messagebox.showwarning("Aviso", "Preencha o nome e selecione o arquivo!")
             return
         inserir_modelo(nome, caminho)
         janela.destroy()
 
-    btn_adicionar = tk.Button(janela, text="Adicionar", command=confirmar)
-    btn_adicionar.grid(row=3, column=1, padx=5, pady=10, sticky="e")
+    tk.Button(janela, text="Adicionar", command=confirmar).grid(row=3, column=1, padx=5, pady=10, sticky="e")
+
+def gerar_documento():
+    messagebox.showinfo("Info", "Função de geração de documento ainda não implementada.")
 
 # -----------------------------
 # Inicialização
 # -----------------------------
 init_db()
-
-# GUI
 root = tk.Tk()
 root.title("Gerenciador de Modelos Jurídicos")
-root.geometry("420x250")
+root.geometry("420x280")
 
-tk.Label(root, text="Selecione o cliente:").pack(pady=10)
-combobox_clientes = ttk.Combobox(root, state="readonly", width=40)
+tk.Label(root, text="Selecione o cliente (CPF ou Nome):").pack(pady=10)
+combobox_clientes = AutocompleteCombobox(root, width=40)
 combobox_clientes.pack(pady=5)
 
-tk.Label(root, text="Selecione um modelo:").pack(pady=10)
-combobox_modelos = ttk.Combobox(root, state="readonly", width=40)
+tk.Label(root, text="Selecione um modelo (Nome):").pack(pady=10)
+combobox_modelos = AutocompleteCombobox(root, width=40)
 combobox_modelos.pack(pady=5)
 
 frame_btns = tk.Frame(root)
 frame_btns.pack(pady=15)
-
-btn_add_modelo = tk.Button(frame_btns, text="Adicionar Modelo", command=adicionar_modelo, width=15)
-btn_add_modelo.grid(row=0, column=0, padx=5)
-
-btn_add_cliente = tk.Button(frame_btns, text="Adicionar Cliente", command=adicionar_cliente, width=15)
-btn_add_cliente.grid(row=0, column=1, padx=5)
+tk.Button(frame_btns, text="Adicionar Modelo", command=adicionar_modelo, width=15).grid(row=0, column=0, padx=5)
+tk.Button(frame_btns, text="Adicionar Cliente", command=adicionar_cliente, width=15).grid(row=0, column=1, padx=5)
+tk.Button(frame_btns, text="Gerar Documento", command=gerar_documento, width=15).grid(row=0, column=2, padx=5)
 
 carregar_clientes()
 carregar_modelos()

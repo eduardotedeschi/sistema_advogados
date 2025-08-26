@@ -221,7 +221,7 @@ class PanedDemo(ttk.PanedWindow):
         )
         self.switch.grid(row=1, column=0, columnspan=2, pady=10)
 
-
+LabelFrame
 class App(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent, padding=15)
