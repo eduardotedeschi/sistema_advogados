@@ -3,12 +3,16 @@ from tkinter import messagebox, END, ttk, filedialog, Toplevel, Label
 import os
 import tempfile
 from docx2pdf import convert
+from docx import Document
+from docx.shared import Inches, Pt
 import time
 import unicodedata
 import re
 import sqlite3
 import pandas as pd
 import brazilcep
+from datetime import datetime
+import locale
 import sv_ttk
 import darkdetect
 
@@ -860,6 +864,54 @@ class Funcs():
         finally:
             self.desconecta_bd()
     
+    def busca_cli_doc(self, event=None):
+        nome_busca = self.cd_busca_entry.get().strip()
+
+        # Se o campo de busca estiver vazio, recarrega a lista completa
+        if not nome_busca:
+            self.select_listaCliDoc()  # Chama a função que preenche a treeview completa
+            return
+
+        try:
+            self.conecta_bd()
+            self.listaCliDoc.delete(*self.listaCliDoc.get_children())
+            
+            # Adapta a query para a busca nas colunas corretas (nome do cliente e nome do documento)
+            query = """
+                SELECT 
+                    dg.dg_id, 
+                    c.cli_nome, 
+                    c.cli_cpf, 
+                    dg.dg_nome, 
+                    d.doc_tipo, 
+                    dg.dg_data_criacao
+                FROM 
+                    documento_gerado AS dg
+                INNER JOIN 
+                    clientes AS c ON dg.fk_clientes_id = c.cli_id
+                INNER JOIN 
+                    documentos AS d ON dg.fk_documentos_id = d.doc_id
+                WHERE
+                    dg.dg_nome LIKE ? OR c.cli_nome LIKE ?
+                ORDER BY 
+                    dg.dg_nome ASC
+            """
+            
+            # Prepara o parâmetro para a busca (usando % para busca parcial)
+            search_param = f"%{nome_busca}%"
+            self.cursor.execute(query, (search_param, search_param))
+
+            resultados_finais = self.cursor.fetchall()
+            
+            for documento in resultados_finais:
+                self.listaCliDoc.insert("", END, values=documento)
+                
+        except Exception as e:
+            print(f"Ocorreu um erro durante a busca em tempo real: {e}")
+
+        finally:
+            self.desconecta_bd()
+    
     def select_listaDocumentos(self, lista_treeview):
         lista_treeview.delete(*lista_treeview.get_children())
         self.conecta_bd()
@@ -872,6 +924,80 @@ class Funcs():
             lista_treeview.insert("", "end", values=doc)
             
         self.desconecta_bd()
+    
+    def select_listaCliDoc(self):
+        self.listaCliDoc.delete(*self.listaCliDoc.get_children())
+        self.conecta_bd()
+
+        # Query SQL corrigida para buscar os dados de todas as colunas
+        documentos = self.cursor.execute(""" 
+            SELECT 
+                dg.dg_id, 
+                c.cli_nome, 
+                c.cli_cpf, 
+                dg.dg_nome, 
+                d.doc_tipo, 
+                dg.dg_data_criacao 
+            FROM 
+                documento_gerado AS dg
+            INNER JOIN 
+                clientes AS c ON dg.fk_clientes_id = c.cli_id
+            INNER JOIN 
+                documentos AS d ON dg.fk_documentos_id = d.doc_id
+            ORDER BY 
+                dg.dg_data_criacao DESC
+        """)
+
+        for doc in documentos:
+            self.listaCliDoc.insert("", "end", values=doc)
+
+        self.desconecta_bd()
+    
+    def del_cli_doc(self):
+        selecao_treeview = self.listaCliDoc.selection()
+
+        # 1. Verifica se alguma linha está selecionada
+        if not selecao_treeview:
+            messagebox.showwarning("Erro de Seleção", 
+                                "Por favor, selecione uma linha para exclusão.")
+            return
+
+        try:
+            # Obtém o ID da linha selecionada (a primeira coluna)
+            id_para_deletar = self.listaCliDoc.item(selecao_treeview[0], 'values')[0]
+
+            # Busca o nome do documento gerado no banco de dados para a confirmação
+            self.conecta_bd()
+            self.cursor.execute("SELECT dg_nome FROM documento_gerado WHERE dg_id = ?", (id_para_deletar,))
+            resultado_busca = self.cursor.fetchone()
+            
+            if resultado_busca is None:
+                messagebox.showerror("Erro", f"O documento com o ID: {id_para_deletar} não foi encontrado.")
+                return
+
+            nome_documento = resultado_busca[0]
+            
+            # Confirmação com o nome e o ID do documento
+            confirmacao = messagebox.askyesno("Confirmar Exclusão", 
+                                            f"Tem certeza que deseja excluir o documento gerado?\n\nNome: {nome_documento}\nID: {id_para_deletar}?")
+            
+            if not confirmacao:
+                return
+
+            # Executa a exclusão no banco de dados
+            self.cursor.execute("DELETE FROM documento_gerado WHERE dg_id = ?", (id_para_deletar,))
+            self.conn.commit()
+            
+            messagebox.showinfo("Sucesso", "Documento gerado excluído com sucesso!")
+            self.select_listaCliDoc() # Recarrega a Treeview após a exclusão
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível excluir o documento.\n\nErro: {e}")
+        except IndexError:
+            # Caso o item selecionado seja inválido
+            messagebox.showerror("Erro", "ID da linha selecionada é inválido.")
+        finally:
+            self.desconecta_bd()
     
     def upt_documento(self):
         id_para_atualizar = self.id_doc_entry.get().strip()
@@ -1098,8 +1224,8 @@ class Funcs():
             self.caminho_doc_entry.delete(0, END)
             self.caminho_doc_entry.insert(0, caminho)
     
-    def exportar(self, file_type):
-        selecao_treeview = self.listaDoc.selection()
+    def exportar(self, file_type, treeview_widget, tabela_nome, colunas_tabela):
+        selecao_treeview = treeview_widget.selection()
 
         try:
             if not selecao_treeview:
@@ -1107,14 +1233,19 @@ class Funcs():
                                     "Por favor, selecione uma linha para exportação.")
                 return
 
-            id_para_exportar = self.listaDoc.item(selecao_treeview[0], 'values')[0]
+            id_para_exportar = treeview_widget.item(selecao_treeview[0], 'values')[0]
+            nome_coluna, arquivo_coluna, id_coluna = colunas_tabela
 
             self.conecta_bd()
-            self.cursor.execute("SELECT doc_nome, doc_arquivo FROM documentos WHERE doc_id = ?", (id_para_exportar,))
+            
+            # Constrói a consulta SQL de forma dinâmica e segura
+            sql_query = f"SELECT {nome_coluna}, {arquivo_coluna} FROM {tabela_nome} WHERE {id_coluna} = ?"
+            
+            self.cursor.execute(sql_query, (id_para_exportar,))
             resultado = self.cursor.fetchone()
             
             if resultado is None:
-                messagebox.showerror("Erro", f"O documento com o ID: {id_para_exportar} não foi encontrado.")
+                messagebox.showerror("Erro", f"O documento com o ID: {id_para_exportar} não foi encontrado na tabela '{tabela_nome}'.")
                 return
                 
             nome_doc_bd, conteudo_doc_bd = resultado
@@ -1169,13 +1300,11 @@ class Funcs():
 
                 label_progresso = Label(janela_progresso, text=f"Aguarde, convertendo {nome_doc_bd} para PDF...")
                 label_progresso.pack(pady=15)
-                
-                # Força a atualização da janela para mostrar o rótulo
                 janela_progresso.update_idletasks()
                 
                 try:
                     convert(caminho_temp_docx, caminho_salvar)
-                    time.sleep(1) # Mantém o atraso para evitar erros
+                    time.sleep(1)
                     
                 except Exception as e:
                     messagebox.showerror("Erro de Conversão", f"Não foi possível converter o arquivo para PDF.\nVerifique se o Microsoft Word (Windows) ou LibreOffice (Linux) está instalado.\n\nErro: {e}")
@@ -1184,21 +1313,175 @@ class Funcs():
                 finally:
                     if os.path.exists(caminho_temp_docx):
                         os.remove(caminho_temp_docx)
-                    janela_progresso.destroy() # Fecha a janela de progresso
+                    janela_progresso.destroy()
                     
             else:
                 messagebox.showerror("Erro", "Tipo de arquivo não suportado. Use 'word' ou 'pdf'.")
                 return
 
-            if(file_type == 'word'):
-                messagebox.showinfo("Sucesso", f"O documento '{nome_doc_bd}.docx' no formato de Word foi exportado com sucesso!")
-            else:
-                messagebox.showinfo("Sucesso", f"O documento '{nome_doc_bd}.pdf' no formato de PDF foi exportado com sucesso!")
+            messagebox.showinfo("Sucesso", f"O documento '{nome_doc_bd}{extensao}' foi exportado com sucesso!")
 
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível exportar o documento.\n\nErro: {e}")
             
         finally:
+            self.desconecta_bd()
+    
+    def formatar_cpf(self, cpf):
+        """Aplica a máscara de CPF."""
+        cpf_limpo = ''.join(filter(str.isdigit, str(cpf)))
+        if len(cpf_limpo) == 11:
+            return f"{cpf_limpo[:3]}.{cpf_limpo[3:6]}.{cpf_limpo[6:9]}-{cpf_limpo[9:]}"
+        return cpf_limpo
+
+    def formatar_rg(self, rg):
+        """Aplica a máscara de RG."""
+        rg_limpo = ''.join(filter(str.isdigit, str(rg)))
+        if len(rg_limpo) == 9:
+            return f"{rg_limpo[:2]}.{rg_limpo[2:5]}.{rg_limpo[5:8]}-{rg_limpo[8:]}"
+        return rg_limpo
+
+    def formatar_cep(self, cep):
+        """Aplica a máscara de CEP."""
+        cep_limpo = ''.join(filter(str.isdigit, str(cep)))
+        if len(cep_limpo) == 8:
+            return f"{cep_limpo[:5]}-{cep_limpo[5:]}"
+        return cep_limpo
+
+    def formatar_telefone(self, tel):
+        """Aplica a máscara de telefone (com ou sem DDD)."""
+        tel_limpo = ''.join(filter(str.isdigit, str(tel)))
+        if len(tel_limpo) == 11: # Ex: (99) 99999-9999
+            return f"({tel_limpo[:2]}) {tel_limpo[2:7]}-{tel_limpo[7:]}"
+        elif len(tel_limpo) == 10: # Ex: (99) 9999-9999
+            return f"({tel_limpo[:2]}) {tel_limpo[2:6]}-{tel_limpo[6:]}"
+        return tel_limpo
+
+    def formatar_cnpj(self, cnpj):
+        """Aplica a máscara de CNPJ."""
+        cnpj_limpo = ''.join(filter(str.isdigit, str(cnpj)))
+        if len(cnpj_limpo) == 14:
+            return f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
+        return cnpj_limpo
+    
+    def gerar_documento_cli_doc(self, lista_clientes, lista_documentos, entry_nome):
+        selecao_cliente = lista_clientes.selection()
+        selecao_documento = lista_documentos.selection()
+        nome_arquivo_gerado = entry_nome.get().strip()
+
+        if not selecao_cliente:
+            messagebox.showwarning("Aviso", "Por favor, selecione um cliente.")
+            return
+        if not selecao_documento:
+            messagebox.showwarning("Aviso", "Por favor, selecione um documento.")
+            return
+        if not nome_arquivo_gerado:
+            messagebox.showwarning("Aviso", "Por favor, digite um nome para o arquivo gerado.")
+            return
+
+        cli_id = lista_clientes.item(selecao_cliente[0], 'values')[0]
+        doc_id = lista_documentos.item(selecao_documento[0], 'values')[0]
+
+        self.conecta_bd()
+        try:
+            # 1. Resgata os dados do cliente e o arquivo do documento
+            self.cursor.execute("SELECT * FROM clientes WHERE cli_id = ?", (cli_id,))
+            dados_cliente = self.cursor.fetchone()
+            
+            self.cursor.execute("SELECT doc_arquivo FROM documentos WHERE doc_id = ?", (doc_id,))
+            arquivo_doc_binario = self.cursor.fetchone()[0]
+
+            if not dados_cliente or not arquivo_doc_binario:
+                messagebox.showerror("Erro", "Cliente ou documento não encontrado no banco de dados.")
+                return
+
+            # 2. Configura o idioma para o mês em português
+            try:
+                locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
+            except locale.Error:
+                locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
+
+            # Mapeamento dos dados do cliente para as variáveis do documento
+            mapa_variaveis = {
+                "{{ID}}": str(dados_cliente[0]),
+                "{{NOME}}": dados_cliente[1],
+                "{{NACIONALIDADE}}": dados_cliente[2],
+                "{{ESTADO_CIVIL}}": dados_cliente[3],
+                "{{PROFISSAO}}": dados_cliente[4],
+                "{{RG}}": self.formatar_rg(dados_cliente[5]),
+                "{{CPF}}": self.formatar_cpf(dados_cliente[6]),
+                "{{CEP}}": self.formatar_cep(dados_cliente[7]),
+                "{{UF}}": dados_cliente[8],
+                "{{CIDADE}}": dados_cliente[9],
+                "{{LOGRADOURO}}": dados_cliente[10],
+                "{{N_RUA}}": dados_cliente[11],
+                "{{BAIRRO}}": dados_cliente[12],
+                "{{TELEFONE}}": self.formatar_telefone(dados_cliente[13]),
+                "{{EMAIL}}": dados_cliente[14],
+                "{{NOME_REU}}": dados_cliente[15],
+                "{{CNPJ_REU}}": self.formatar_cnpj(dados_cliente[16]),
+                "{{DIA}}": str(datetime.now().day),
+                "{{MES}}": datetime.now().strftime('%B').capitalize(),
+                "{{ANO}}": str(datetime.now().year)
+            }
+
+            # 3. Gera um arquivo temporário para trabalhar com o documento
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+                temp_file.write(arquivo_doc_binario)
+                caminho_temp = temp_file.name
+
+            doc_modelo = Document(caminho_temp)
+
+            # 4. Substituição que preserva a formatação em todos os casos
+            def substituir_variaveis_no_objeto(objeto_texto, variaveis):
+                # Encontra e substitui placeholders no texto completo do objeto
+                for chave, valor in variaveis.items():
+                    if chave in objeto_texto.text:
+                        # Itera sobre os runs para garantir que a formatação seja mantida
+                        for run in objeto_texto.runs:
+                            if chave in run.text:
+                                run.text = run.text.replace(chave, str(valor))
+            
+            # Substitui variáveis em parágrafos
+            for paragrafo in doc_modelo.paragraphs:
+                substituir_variaveis_no_objeto(paragrafo, mapa_variaveis)
+
+            # Substitui variáveis em tabelas
+            for tabela in doc_modelo.tables:
+                for linha in tabela.rows:
+                    for celula in linha.cells:
+                        for paragrafo in celula.paragraphs:
+                            substituir_variaveis_no_objeto(paragrafo, mapa_variaveis)
+
+            # 5. Salva o documento modificado em um novo arquivo temporário
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as novo_doc_temp:
+                doc_modelo.save(novo_doc_temp.name)
+                novo_doc_temp.seek(0)
+                novo_arquivo_binario = novo_doc_temp.read()
+                caminho_novo_doc_temp = novo_doc_temp.name
+
+            # 6. Armazena o novo documento no banco de dados
+            # Salva a data no formato dia-mês-ano
+            data_criacao = datetime.now().strftime("%d-%m-%Y")
+            
+            self.cursor.execute(
+                "INSERT INTO documento_gerado (fk_clientes_id, fk_documentos_id, dg_nome, dg_data_criacao, dg_arquivo) VALUES (?, ?, ?, ?, ?)",
+                (cli_id, doc_id, nome_arquivo_gerado, data_criacao, novo_arquivo_binario)
+            )
+            self.conn.commit()
+            
+            messagebox.showinfo("Sucesso", f"Documento '{nome_arquivo_gerado}' gerado e salvo com sucesso!")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível gerar o documento.\nErro: {e}")
+            
+        finally:
+            # Limpa os arquivos temporários, se existirem
+            if 'caminho_temp' in locals() and os.path.exists(caminho_temp):
+                os.remove(caminho_temp)
+            if 'caminho_novo_doc_temp' in locals() and os.path.exists(caminho_novo_doc_temp):
+                os.remove(caminho_novo_doc_temp)
+            
             self.desconecta_bd()
     
     def criar_treeview_generica(self, pai, colunas, cabecalhos, larguras_colunas, relx, rely, relwidth, relheight):
@@ -1483,12 +1766,14 @@ class Funcs():
         self.bt_limpar_documento = ttk.Button(self.frame_documento, text="Limpar", command=self.limpa_documento)
         self.bt_limpar_documento.place(relx= 0.82, rely=0.17, relwidth=0.11)
 
+        metadados_doc_modelo = ("doc_nome", "doc_arquivo", "doc_id")
+        
         #Botão exportar para Word
-        self.bt_export_word = ttk.Button(self.frame_documento, text="Exportar Word", style='Accent.TButton', command=lambda: self.exportar('word'))
+        self.bt_export_word = ttk.Button(self.frame_documento, text="Exportar Word", style='Accent.TButton', command=lambda: self.exportar("word", self.listaDoc, "documentos", metadados_doc_modelo))
         self.bt_export_word.place(relx= 0.60, rely=0.94, relwidth=0.17)
 
         #Botão exportar para PDF
-        self.bt_export_pdf = ttk.Button(self.frame_documento, text="Exportar PDF", style='Accent.TButton', command=lambda: self.exportar('pdf'))
+        self.bt_export_pdf = ttk.Button(self.frame_documento, text="Exportar PDF", style='Accent.TButton', command=lambda: self.exportar("pdf", self.listaDoc, "documentos", metadados_doc_modelo))
         self.bt_export_pdf.place(relx= 0.80, rely=0.94, relwidth=0.17)
         
         #Criação da Treeview
@@ -1506,20 +1791,24 @@ class Funcs():
         self.lb_cd_busca.place(relx= 0.03, rely=0.02)
         self.cd_busca_entry = ttk.Entry(self.frame_clientes_doc, style="Big.TEntry")
         self.cd_busca_entry.place(relx= 0.02, rely=0.05, relwidth=0.4)
+        self.cd_busca_entry.bind("<KeyRelease>", self.busca_cli_doc)
 
         #Botão deletar registro
-        self.bt_del_cd = ttk.Button(self.frame_clientes_doc, text="Deletar Registro", style='Accent.TButton')
+        self.bt_del_cd = ttk.Button(self.frame_clientes_doc, text="Deletar Registro", style='Accent.TButton', command=self.del_cli_doc)
         self.bt_del_cd.place(relx= 0.02, rely=0.11, relwidth=0.17)
         
         #Criação da Treeview
         self.lista_clientes_doc()
+        self.select_listaCliDoc()
 
+        metadados_doc_gerado = ("dg_nome", "dg_arquivo", "dg_id")
+        
         #Botão exportar para Word
-        self.bt_export_word_cd = ttk.Button(self.frame_clientes_doc, text="Exportar Word", style='Accent.TButton', command=lambda: self.exportar('word'))
+        self.bt_export_word_cd = ttk.Button(self.frame_clientes_doc, text="Exportar Word", style='Accent.TButton', command=lambda: self.exportar("word", self.listaCliDoc, "documento_gerado", metadados_doc_gerado))
         self.bt_export_word_cd.place(relx= 0.60, rely=0.94, relwidth=0.17)
 
         #Botão exportar para PDF
-        self.bt_export_pdf_cd = ttk.Button(self.frame_clientes_doc, text="Exportar PDF", style='Accent.TButton', command=lambda: self.exportar('pdf'))
+        self.bt_export_pdf_cd = ttk.Button(self.frame_clientes_doc, text="Exportar PDF", style='Accent.TButton', command=lambda: self.exportar("pdf", self.listaCliDoc, "documento_gerado", metadados_doc_gerado))
         self.bt_export_pdf_cd.place(relx= 0.80, rely=0.94, relwidth=0.17)
 
     def gerar_doc(self):
@@ -1546,6 +1835,20 @@ class Funcs():
 
         self.lista_gerar_doc()
         self.select_listaDocumentos(self.listaGerarDoc)
+
+        #Label e Entry do nome do Documento Gerado
+        self.lb_gerar_nome = ttk.Label(self.frame_gerar_doc, text="Nome do documento*")
+        self.lb_gerar_nome.place(relx= 0.03, rely=0.89)
+        self.gerar_nome_entry = ttk.Entry(self.frame_gerar_doc, style="Big.TEntry")
+        self.gerar_nome_entry.place(relx= 0.02, rely=0.92, relwidth=0.5)
+        
+        #Botão gerar Word
+        self.bt_gerar_word = ttk.Button(self.frame_gerar_doc, text="Gerar Word", style='Accent.TButton', command=lambda: self.gerar_documento_cli_doc(self.listaGerarCli, self.listaGerarDoc, self.gerar_nome_entry))
+        self.bt_gerar_word.place(relx= 0.60, rely=0.92, relwidth=0.17)
+
+        #Botão gerar PDF
+        self.bt_gerar_pdf = ttk.Button(self.frame_gerar_doc, text="Gerar PDF", style='Accent.TButton')
+        self.bt_gerar_pdf.place(relx= 0.80, rely=0.92, relwidth=0.17)
         
 class App(Funcs):
     def __init__(self):
