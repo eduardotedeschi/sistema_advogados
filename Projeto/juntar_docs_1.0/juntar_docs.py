@@ -71,6 +71,6 @@ def juntar_docs(pasta, nome_arquivo_final):
 
 
 if __name__ == "__main__":
-    caminho_pasta = r"C:\Users\dudu\Documents\CLIENTES WEB\daniel_adv\Projeto\banco_de_documentos"
+    caminho_pasta = r"C:\Users\dudu\Documents\CLIENTES WEB\sistema_advogados\Projeto\juntar_docs_1.0\banco_de_documentos"
     arquivo_saida = "documento_final.docx"
     juntar_docs(caminho_pasta, arquivo_saida)
