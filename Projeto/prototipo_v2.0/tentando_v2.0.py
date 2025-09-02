@@ -1,10 +1,14 @@
-from tkinter import *
+import tkinter as tk
 from tkinter import messagebox, END, ttk, filedialog, Toplevel, Label
 import os
 import tempfile
 from docx2pdf import convert
 from docx import Document
 from docx.shared import Inches, Pt
+from bisect import bisect_right
+import sys
+import subprocess
+from docx.shared import RGBColor
 import time
 import unicodedata
 import re
@@ -16,7 +20,7 @@ import locale
 import sv_ttk
 import darkdetect
 
-root = Tk()
+root = tk.Tk()
 
 class AutocompleteEntry(ttk.Entry):
     def __init__(self, autocompleteList, *args, **kwargs):
@@ -47,7 +51,7 @@ class AutocompleteEntry(ttk.Entry):
 
         self.var = self["textvariable"]
         if self.var == '':
-            self.var = self["textvariable"] = StringVar()
+            self.var = self["textvariable"] = tk.StringVar()
 
         self.var.trace('w', self.changed)
         self.bind("<Right>", self.selection)
@@ -64,7 +68,7 @@ class AutocompleteEntry(ttk.Entry):
             words = self.comparison()
             if words:
                 if not self.listboxUp:
-                    self.listbox = Listbox(self.master, width=self["width"], height=self.listboxLength)
+                    self.listbox = tk.Listbox(self.master, width=self["width"], height=self.listboxLength)
                     self.listbox.bind("<Button-1>", self.selection)
                     self.listbox.bind("<Right>", self.selection)
                     self.listbox.place(x=self.winfo_x(), y=self.winfo_y() + self.winfo_height())
@@ -79,7 +83,7 @@ class AutocompleteEntry(ttk.Entry):
                     self.listboxUp = False
     def selection(self, event):
         if self.listboxUp:
-            self.var.set(self.listbox.get(ACTIVE))
+            self.var.set(self.listbox.get(tk.ACTIVE))
             self.listbox.destroy()
             self.listboxUp = False
             self.icursor(END)
@@ -622,7 +626,7 @@ class Funcs():
         finally:
             self.desconecta_bd()
     
-    def del_cliente(self):
+    def del_cliente(self, event):
         id_para_deletar = None
         
         # 1. Tenta obter o ID do campo id_entry (se estiver preenchido)
@@ -953,49 +957,40 @@ class Funcs():
 
         self.desconecta_bd()
     
-    def del_cli_doc(self):
-        selecao_treeview = self.listaCliDoc.selection()
+    def del_cli_doc(self, event):
+        selecoes_treeview = self.listaCliDoc.selection()
 
         # 1. Verifica se alguma linha está selecionada
-        if not selecao_treeview:
+        if not selecoes_treeview:
             messagebox.showwarning("Erro de Seleção", 
-                                "Por favor, selecione uma linha para exclusão.")
+                                "Por favor, selecione uma ou mais linhas para exclusão.")
+            return
+
+        # 2. Pergunta de confirmação antes de iniciar o processo
+        confirmacao = messagebox.askyesno("Confirmar Exclusão", 
+                                        f"Tem certeza que deseja excluir os {len(selecoes_treeview)} documento(s) gerado(s)?")
+        
+        if not confirmacao:
             return
 
         try:
-            # Obtém o ID da linha selecionada (a primeira coluna)
-            id_para_deletar = self.listaCliDoc.item(selecao_treeview[0], 'values')[0]
-
-            # Busca o nome do documento gerado no banco de dados para a confirmação
             self.conecta_bd()
-            self.cursor.execute("SELECT dg_nome FROM documento_gerado WHERE dg_id = ?", (id_para_deletar,))
-            resultado_busca = self.cursor.fetchone()
-            
-            if resultado_busca is None:
-                messagebox.showerror("Erro", f"O documento com o ID: {id_para_deletar} não foi encontrado.")
-                return
+            for item_id in selecoes_treeview:
+                # Obtém o valor da primeira coluna (ID do documento)
+                id_para_deletar = self.listaCliDoc.item(item_id, 'values')[0]
 
-            nome_documento = resultado_busca[0]
-            
-            # Confirmação com o nome e o ID do documento
-            confirmacao = messagebox.askyesno("Confirmar Exclusão", 
-                                            f"Tem certeza que deseja excluir o documento gerado?\n\nNome: {nome_documento}\nID: {id_para_deletar}?")
-            
-            if not confirmacao:
-                return
-
-            # Executa a exclusão no banco de dados
-            self.cursor.execute("DELETE FROM documento_gerado WHERE dg_id = ?", (id_para_deletar,))
+                # Executa a exclusão no banco de dados para cada ID
+                self.cursor.execute("DELETE FROM documento_gerado WHERE dg_id = ?", (id_para_deletar,))
+                
             self.conn.commit()
             
-            messagebox.showinfo("Sucesso", "Documento gerado excluído com sucesso!")
-            self.select_listaCliDoc() # Recarrega a Treeview após a exclusão
-
+            messagebox.showinfo("Sucesso", f"{len(selecoes_treeview)} documento(s) excluído(s) com sucesso!")
+            self.select_listaCliDoc()  # Recarrega a Treeview após a exclusão
+            
         except Exception as e:
-            messagebox.showerror("Erro", f"Não foi possível excluir o documento.\n\nErro: {e}")
-        except IndexError:
-            # Caso o item selecionado seja inválido
-            messagebox.showerror("Erro", "ID da linha selecionada é inválido.")
+            self.conn.rollback()  # Desfaz as operações em caso de erro
+            messagebox.showerror("Erro", f"Não foi possível excluir o(s) documento(s).\n\nErro: {e}")
+            
         finally:
             self.desconecta_bd()
     
@@ -1145,7 +1140,7 @@ class Funcs():
         finally:
             self.desconecta_bd()
 
-    def del_documento(self):
+    def del_documento(self, event):
         id_para_deletar = None
 
         # 1. Tenta obter o ID do campo id_entry (se estiver preenchido)
@@ -1363,7 +1358,7 @@ class Funcs():
         if len(cnpj_limpo) == 14:
             return f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
         return cnpj_limpo
-    
+
     def gerar_documento_cli_doc(self, lista_clientes, lista_documentos, entry_nome):
         selecao_cliente = lista_clientes.selection()
         selecao_documento = lista_documentos.selection()
@@ -1401,25 +1396,25 @@ class Funcs():
             except locale.Error:
                 locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
 
-            # Mapeamento dos dados do cliente para as variáveis do documento
+            # Mapeamento dos dados do cliente para as variáveis do documento (valores em str)
             mapa_variaveis = {
                 "{{ID}}": str(dados_cliente[0]),
-                "{{NOME}}": dados_cliente[1],
-                "{{NACIONALIDADE}}": dados_cliente[2],
-                "{{ESTADO_CIVIL}}": dados_cliente[3],
-                "{{PROFISSAO}}": dados_cliente[4],
-                "{{RG}}": self.formatar_rg(dados_cliente[5]),
-                "{{CPF}}": self.formatar_cpf(dados_cliente[6]),
-                "{{CEP}}": self.formatar_cep(dados_cliente[7]),
-                "{{UF}}": dados_cliente[8],
-                "{{CIDADE}}": dados_cliente[9],
-                "{{LOGRADOURO}}": dados_cliente[10],
-                "{{N_RUA}}": dados_cliente[11],
-                "{{BAIRRO}}": dados_cliente[12],
-                "{{TELEFONE}}": self.formatar_telefone(dados_cliente[13]),
-                "{{EMAIL}}": dados_cliente[14],
-                "{{NOME_REU}}": dados_cliente[15],
-                "{{CNPJ_REU}}": self.formatar_cnpj(dados_cliente[16]),
+                "{{NOME}}": str(dados_cliente[1] or ""),
+                "{{NACIONALIDADE}}": str(dados_cliente[2] or ""),
+                "{{ESTADO_CIVIL}}": str(dados_cliente[3] or ""),
+                "{{PROFISSAO}}": str(dados_cliente[4] or ""),
+                "{{RG}}": str(self.formatar_rg(dados_cliente[5]) if dados_cliente[5] else ""),
+                "{{CPF}}": str(self.formatar_cpf(dados_cliente[6]) if dados_cliente[6] else ""),
+                "{{CEP}}": str(self.formatar_cep(dados_cliente[7]) if dados_cliente[7] else ""),
+                "{{UF}}": str(dados_cliente[8] or ""),
+                "{{CIDADE}}": str(dados_cliente[9] or ""),
+                "{{LOGRADOURO}}": str(dados_cliente[10] or ""),
+                "{{N_RUA}}": str(dados_cliente[11] or ""),
+                "{{BAIRRO}}": str(dados_cliente[12] or ""),
+                "{{TELEFONE}}": str(self.formatar_telefone(dados_cliente[13]) if dados_cliente[13] else ""),
+                "{{EMAIL}}": str(dados_cliente[14] or ""),
+                "{{NOME_REU}}": str(dados_cliente[15] or ""),
+                "{{CNPJ_REU}}": str(self.formatar_cnpj(dados_cliente[16]) if dados_cliente[16] else ""),
                 "{{DIA}}": str(datetime.now().day),
                 "{{MES}}": datetime.now().strftime('%B').capitalize(),
                 "{{ANO}}": str(datetime.now().year)
@@ -1432,26 +1427,135 @@ class Funcs():
 
             doc_modelo = Document(caminho_temp)
 
-            # 4. Substituição que preserva a formatação em todos os casos
-            def substituir_variaveis_no_objeto(objeto_texto, variaveis):
-                # Encontra e substitui placeholders no texto completo do objeto
-                for chave, valor in variaveis.items():
-                    if chave in objeto_texto.text:
-                        # Itera sobre os runs para garantir que a formatação seja mantida
-                        for run in objeto_texto.runs:
-                            if chave in run.text:
-                                run.text = run.text.replace(chave, str(valor))
-            
-            # Substitui variáveis em parágrafos
-            for paragrafo in doc_modelo.paragraphs:
-                substituir_variaveis_no_objeto(paragrafo, mapa_variaveis)
+            # ------------ função robusta de substituição que preserva estilo ------------
+            def substituir_variaveis_no_paragrafo(paragrafo, variaveis):
+                runs = list(paragrafo.runs)  # snapshot
+                if not runs:
+                    return
 
-            # Substitui variáveis em tabelas
+                textos = [r.text for r in runs]
+                combinado = "".join(textos)
+                if not any(k in combinado for k in variaveis):
+                    return  # nada a fazer
+
+                # boundaries: posições cumulativas dos runs
+                boundaries = [0]
+                for t in textos:
+                    boundaries.append(boundaries[-1] + len(t))
+
+                def find_run_index(char_idx):
+                    # retorna índice do run que contém o char_idx
+                    return bisect_right(boundaries, char_idx) - 1
+
+                def snapshot_run(run):
+                    f = run.font
+                    snap = {
+                        "name": f.name,
+                        "size": f.size,
+                        "bold": f.bold,
+                        "italic": f.italic,
+                        "underline": f.underline,
+                        "color": None
+                    }
+                    try:
+                        snap["color"] = f.color.rgb
+                    except Exception:
+                        snap["color"] = None
+                    return snap
+
+                def apply_snapshot_to_run(run, snap):
+                    f = run.font
+                    # só aplica quando o atributo não é None, para não sobrescrever heranças de estilo
+                    if snap.get("name") is not None:
+                        f.name = snap["name"]
+                    if snap.get("size") is not None:
+                        f.size = snap["size"]
+                    if snap.get("bold") is not None:
+                        f.bold = snap["bold"]
+                    if snap.get("italic") is not None:
+                        f.italic = snap["italic"]
+                    if snap.get("underline") is not None:
+                        f.underline = snap["underline"]
+                    if snap.get("color") is not None:
+                        try:
+                            f.color.rgb = snap["color"]
+                        except Exception:
+                            pass
+
+                segments = []  # lista de (texto, estilo_snap)
+
+                i = 0
+                L = len(combinado)
+                # busca próxima ocorrência de qualquer placeholder
+                while i < L:
+                    next_pos = None
+                    next_key = None
+                    for key in variaveis:
+                        pos = combinado.find(key, i)
+                        if pos != -1 and (next_pos is None or pos < next_pos):
+                            next_pos = pos
+                            next_key = key
+                    if next_pos is None:
+                        # não há mais placeholders: pega o resto mantendo estilos dos runs
+                        start = i
+                        end = L
+                        # percorre runs cobrindo [start,end)
+                        start_run = find_run_index(start)
+                        end_run = find_run_index(end - 1) if end - 1 >= 0 else start_run
+                        for r_idx in range(start_run, end_run + 1):
+                            r = runs[r_idx]
+                            r_start = boundaries[r_idx]
+                            slice_start = max(start, r_start) - r_start
+                            slice_end = min(end, boundaries[r_idx + 1]) - r_start
+                            texto_slice = r.text[slice_start:slice_end]
+                            if texto_slice:
+                                segments.append((texto_slice, snapshot_run(r)))
+                        break
+                    if next_pos > i:
+                        # adiciona o texto normal entre i e next_pos (respeitando runs)
+                        start = i
+                        end = next_pos
+                        start_run = find_run_index(start)
+                        end_run = find_run_index(end - 1)
+                        for r_idx in range(start_run, end_run + 1):
+                            r = runs[r_idx]
+                            r_start = boundaries[r_idx]
+                            slice_start = max(start, r_start) - r_start
+                            slice_end = min(end, boundaries[r_idx + 1]) - r_start
+                            texto_slice = r.text[slice_start:slice_end]
+                            if texto_slice:
+                                segments.append((texto_slice, snapshot_run(r)))
+                        i = next_pos
+                    else:
+                        # placeholder começa em i
+                        # escolhe estilo do run onde o placeholder começa
+                        start_run_idx = find_run_index(i)
+                        estilo_sub = snapshot_run(runs[start_run_idx])
+                        valor = str(variaveis[next_key])
+                        segments.append((valor, estilo_sub))
+                        i += len(next_key)
+
+                # reconstruir os runs do parágrafo com os segmentos
+                # remove runs existentes
+                for r in list(paragrafo.runs):
+                    r._element.getparent().remove(r._element)
+
+                # adiciona novos runs de acordo com segmentos (aplicando estilo)
+                for texto, estilo in segments:
+                    novo_run = paragrafo.add_run(texto)
+                    apply_snapshot_to_run(novo_run, estilo)
+            # -------------------------------------------------------------------------
+
+            # Aplica substituições em todos os parágrafos do documento
+            for paragrafo in doc_modelo.paragraphs:
+                substituir_variaveis_no_paragrafo(paragrafo, mapa_variaveis)
+
+            # Aplica em tabelas
             for tabela in doc_modelo.tables:
                 for linha in tabela.rows:
                     for celula in linha.cells:
                         for paragrafo in celula.paragraphs:
-                            substituir_variaveis_no_objeto(paragrafo, mapa_variaveis)
+                            substituir_variaveis_no_paragrafo(paragrafo, mapa_variaveis)
 
             # 5. Salva o documento modificado em um novo arquivo temporário
             with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as novo_doc_temp:
@@ -1461,7 +1565,6 @@ class Funcs():
                 caminho_novo_doc_temp = novo_doc_temp.name
 
             # 6. Armazena o novo documento no banco de dados
-            # Salva a data no formato dia-mês-ano
             data_criacao = datetime.now().strftime("%d-%m-%Y")
             
             self.cursor.execute(
@@ -1472,17 +1575,32 @@ class Funcs():
             
             messagebox.showinfo("Sucesso", f"Documento '{nome_arquivo_gerado}' gerado e salvo com sucesso!")
 
+            # 7. Abre o arquivo gerado automaticamente (Windows, macOS, Linux)
+            try:
+                if os.name == 'nt':
+                    if self.abrir_apos_gerar_var.get():
+                        os.startfile(caminho_novo_doc_temp)
+                elif sys.platform == 'darwin':
+                    subprocess.call(['open', caminho_novo_doc_temp])
+                else:
+                    subprocess.call(['xdg-open', caminho_novo_doc_temp])
+            except Exception:
+                # falhar ao abrir não é crítico; apenas continue
+                pass
+
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível gerar o documento.\nErro: {e}")
             
         finally:
-            # Limpa os arquivos temporários, se existirem
+            # Limpa o arquivo temporário original (mantemos o novo para que o usuário possa abrir)
             if 'caminho_temp' in locals() and os.path.exists(caminho_temp):
-                os.remove(caminho_temp)
-            if 'caminho_novo_doc_temp' in locals() and os.path.exists(caminho_novo_doc_temp):
-                os.remove(caminho_novo_doc_temp)
+                try:
+                    os.remove(caminho_temp)
+                except Exception:
+                    pass
             
             self.desconecta_bd()
+
     
     def criar_treeview_generica(self, pai, colunas, cabecalhos, larguras_colunas, relx, rely, relwidth, relheight):
         # Cria a Treeview
@@ -1691,7 +1809,7 @@ class Funcs():
         self.bt_update_cliente.place(relx= 0.23, rely=0.44, relwidth=0.17)
 
         #Botão deletar cliente
-        self.bt_del_cliente = ttk.Button(self.frame_cliente, text="Deletar Cliente", style='Accent.TButton', command=self.del_cliente)
+        self.bt_del_cliente = ttk.Button(self.frame_cliente, text="Deletar Cliente", style='Accent.TButton', command=lambda: self.del_cliente(None))
         self.bt_del_cliente.place(relx= 0.43, rely=0.44, relwidth=0.17)
 
         #Label e Entry da pesquisa por nome ou cpf do cliente
@@ -1709,6 +1827,8 @@ class Funcs():
         self.lista_clientes()
         self.select_listaClientes(self.listaCli)
         self.setup_enter_bindings("frame_cliente")
+        self.listaCli.bind("<Delete>", self.del_cliente)
+        self.listaCli.bind("<BackSpace>", self.del_cliente)
     
     def gerenciar_documentos(self):
         #Configuração de estilo para as Entrys
@@ -1752,7 +1872,7 @@ class Funcs():
         self.bt_upt_documento.place(relx= 0.23, rely=0.23, relwidth=0.17)
         
         #Botão deletar documento
-        self.bt_del_documento = ttk.Button(self.frame_documento, text="Deletar Documento", style='Accent.TButton', command=self.del_documento)
+        self.bt_del_documento = ttk.Button(self.frame_documento, text="Deletar Documento", style='Accent.TButton', command=lambda: self.del_documento(None))
         self.bt_del_documento.place(relx= 0.43, rely=0.23, relwidth=0.17)
 
         #Label e Entry da pesquisa por nome do documento
@@ -1780,6 +1900,8 @@ class Funcs():
         self.lista_documentos()
         self.select_listaDocumentos(self.listaDoc)
         self.setup_enter_bindings("frame_documento")
+        self.listaDoc.bind("<Delete>", self.del_documento)
+        self.listaDoc.bind("<BackSpace>", self.del_documento)
     
     def clientes_doc(self):
         #Configuração de estilo para as Entrys
@@ -1794,12 +1916,14 @@ class Funcs():
         self.cd_busca_entry.bind("<KeyRelease>", self.busca_cli_doc)
 
         #Botão deletar registro
-        self.bt_del_cd = ttk.Button(self.frame_clientes_doc, text="Deletar Registro", style='Accent.TButton', command=self.del_cli_doc)
+        self.bt_del_cd = ttk.Button(self.frame_clientes_doc, text="Deletar Registro", style='Accent.TButton', command=lambda: self.del_cli_doc(None))
         self.bt_del_cd.place(relx= 0.02, rely=0.11, relwidth=0.17)
         
         #Criação da Treeview
         self.lista_clientes_doc()
         self.select_listaCliDoc()
+        self.listaCliDoc.bind("<Delete>", self.del_cli_doc)
+        self.listaCliDoc.bind("<BackSpace>", self.del_cli_doc)
 
         metadados_doc_gerado = ("dg_nome", "dg_arquivo", "dg_id")
         
@@ -1844,11 +1968,12 @@ class Funcs():
         
         #Botão gerar Word
         self.bt_gerar_word = ttk.Button(self.frame_gerar_doc, text="Gerar Word", style='Accent.TButton', command=lambda: self.gerar_documento_cli_doc(self.listaGerarCli, self.listaGerarDoc, self.gerar_nome_entry))
-        self.bt_gerar_word.place(relx= 0.60, rely=0.92, relwidth=0.17)
+        self.bt_gerar_word.place(relx= 0.80, rely=0.92, relwidth=0.17)
 
-        #Botão gerar PDF
-        self.bt_gerar_pdf = ttk.Button(self.frame_gerar_doc, text="Gerar PDF", style='Accent.TButton')
-        self.bt_gerar_pdf.place(relx= 0.80, rely=0.92, relwidth=0.17)
+        #
+        self.abrir_apos_gerar_var = tk.BooleanVar(value=True)
+        self.cb_abrir_apos_gerar = ttk.Checkbutton(self.frame_gerar_doc, text="Abrir documento após gerar", variable=self.abrir_apos_gerar_var, style="TCheckbutton")
+        self.cb_abrir_apos_gerar.place(relx=0.55, rely=0.92)
         
 class App(Funcs):
     def __init__(self):
@@ -1892,7 +2017,7 @@ class App(Funcs):
 
     def widgets_frame1(self):
         #Logo da minha empresa
-        self.img = PhotoImage(file="logo.png")
+        self.img = tk.PhotoImage(file="logo.png")
         self.img_logo = Label(self.frame_menu, image=self.img)
         self.img_logo.place(relx= 0.1, rely=0.02, relwidth=0.8, relheight=0.33)
 
