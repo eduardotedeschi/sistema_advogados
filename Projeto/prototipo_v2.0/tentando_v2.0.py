@@ -813,7 +813,7 @@ class Funcs():
     def select_listaClientes(self, lista_treeview):
         lista_treeview.delete(*lista_treeview.get_children())
         self.conecta_bd()
-        lista = self.cursor.execute(""" SELECT cli_id, cli_nome, cli_nacionalidade, cli_estado_civil, cli_profissao, cli_rg, cli_cpf, cli_cep, cli_uf, cli_cidade, cli_logradouro, cli_n_rua, cli_bairro, cli_telefone, cli_email, cli_nome_reu, cli_cnpj_reu FROM clientes ORDER BY cli_nome ASC""")
+        lista = self.cursor.execute(""" SELECT * FROM clientes ORDER BY cli_nome ASC""")
 
         for i in lista:
             lista_treeview.insert("", END, values=i)
@@ -824,7 +824,7 @@ class Funcs():
 
         # Se o campo de busca estiver vazio, recarrega a lista completa
         if not nome_busca:
-            self.select_listaDoc(lista_treeview)
+            self.select_listaDocumentos(lista_treeview)
             return
 
         try:
@@ -873,43 +873,83 @@ class Funcs():
 
         # Se o campo de busca estiver vazio, recarrega a lista completa
         if not nome_busca:
-            self.select_listaCliDoc()  # Chama a função que preenche a treeview completa
+            self.select_listaCliDoc()
             return
 
         try:
             self.conecta_bd()
             self.listaCliDoc.delete(*self.listaCliDoc.get_children())
             
-            # Adapta a query para a busca nas colunas corretas (nome do cliente e nome do documento)
-            query = """
-                SELECT 
-                    dg.dg_id, 
-                    c.cli_nome, 
-                    c.cli_cpf, 
-                    dg.dg_nome, 
-                    d.doc_tipo, 
-                    dg.dg_data_criacao
-                FROM 
-                    documento_gerado AS dg
-                INNER JOIN 
-                    clientes AS c ON dg.fk_clientes_id = c.cli_id
-                INNER JOIN 
-                    documentos AS d ON dg.fk_documentos_id = d.doc_id
-                WHERE
-                    dg.dg_nome LIKE ? OR c.cli_nome LIKE ?
-                ORDER BY 
-                    dg.dg_nome ASC
-            """
-            
-            # Prepara o parâmetro para a busca (usando % para busca parcial)
-            search_param = f"%{nome_busca}%"
-            self.cursor.execute(query, (search_param, search_param))
+            # Remove caracteres de formatação para checar se é um número (CPF)
+            busca_formatada_cpf = re.sub(r'\D', '', nome_busca)
 
-            resultados_finais = self.cursor.fetchall()
-            
-            for documento in resultados_finais:
-                self.listaCliDoc.insert("", END, values=documento)
+            # A busca é um número se o texto limpo não estiver vazio
+            if busca_formatada_cpf:
+                # A busca é por CPF.
+                query = """
+                    SELECT 
+                        dg.dg_id, 
+                        c.cli_nome, 
+                        c.cli_cpf, 
+                        dg.dg_nome, 
+                        d.doc_tipo, 
+                        dg.dg_data_criacao
+                    FROM 
+                        documento_gerado AS dg
+                    INNER JOIN 
+                        clientes AS c ON dg.fk_clientes_id = c.cli_id
+                    INNER JOIN 
+                        documentos AS d ON dg.fk_documentos_id = d.doc_id
+                    WHERE
+                        c.cli_cpf LIKE ?
+                    ORDER BY 
+                        dg.dg_data_criacao DESC
+                """
+                search_param = (f"%{busca_formatada_cpf}%",)
+                self.cursor.execute(query, search_param)
+                resultados_finais = self.cursor.fetchall()
                 
+                for documento in resultados_finais:
+                    self.listaCliDoc.insert("", "end", values=documento)
+                    
+            else:
+                # A busca é um texto. Buscamos todos os registros para filtrar em Python
+                # e ignorar acentos, como você já fazia.
+                query = """
+                    SELECT 
+                        dg.dg_id, 
+                        c.cli_nome, 
+                        c.cli_cpf, 
+                        dg.dg_nome, 
+                        d.doc_tipo, 
+                        dg.dg_data_criacao
+                    FROM 
+                        documento_gerado AS dg
+                    INNER JOIN 
+                        clientes AS c ON dg.fk_clientes_id = c.cli_id
+                    INNER JOIN 
+                        documentos AS d ON dg.fk_documentos_id = d.doc_id
+                """
+                self.cursor.execute(query)
+                resultados_do_banco = self.cursor.fetchall()
+                
+                resultados_finais = []
+                nome_normalizado_busca = unicodedata.normalize('NFKD', nome_busca).encode('ascii', 'ignore').decode('utf-8').lower()
+                
+                for documento in resultados_do_banco:
+                    nome_cliente_bd = documento[1]
+                    nome_documento_bd = documento[3]
+                    
+                    nome_cli_bd_normalizado = unicodedata.normalize('NFKD', nome_cliente_bd).encode('ascii', 'ignore').decode('utf-8').lower()
+                    nome_doc_bd_normalizado = unicodedata.normalize('NFKD', nome_documento_bd).encode('ascii', 'ignore').decode('utf-8').lower()
+                    
+                    # Verifica se a busca está em um dos dois campos
+                    if nome_normalizado_busca in nome_cli_bd_normalizado or nome_normalizado_busca in nome_doc_bd_normalizado:
+                        resultados_finais.append(documento)
+
+                for item in resultados_finais:
+                    self.listaCliDoc.insert("", "end", values=item)
+                            
         except Exception as e:
             print(f"Ocorreu um erro durante a busca em tempo real: {e}")
 
@@ -1626,10 +1666,10 @@ class Funcs():
 
         # Lógica de scroll com o mouse
         def _on_mousewheel_vertical(event):
-            treeview.yview_scroll(-3 * int(event.delta / 120), "units")
+            treeview.yview_scroll(-3 * int(event.delta / 2), "units")
 
         def _on_mousewheel_horizontal(event):
-            treeview.xview_scroll(-1 * int(event.delta / 120), "units")
+            treeview.xview_scroll(-1 * int(event.delta / 2), "units")
 
         treeview.bind("<MouseWheel>", _on_mousewheel_vertical)
         treeview.bind("<Shift-MouseWheel>", _on_mousewheel_horizontal)
@@ -1686,7 +1726,6 @@ class Funcs():
         self.listaCliDoc = self.criar_treeview_generica(self.frame_clientes_doc, colunas, cabecalhos, larguras, relx, rely, relwidth, relheight)
     
     def gerenciar_clientes(self):
-
         #Configuração de estilo para as Entrys
         self.style = ttk.Style()
         self.style.configure("Big.TEntry", font=("Helvetica", 20))
@@ -1935,7 +1974,7 @@ class Funcs():
         self.bt_export_pdf_cd = ttk.Button(self.frame_clientes_doc, text="Exportar PDF", style='Accent.TButton', command=lambda: self.exportar("pdf", self.listaCliDoc, "documento_gerado", metadados_doc_gerado))
         self.bt_export_pdf_cd.place(relx= 0.80, rely=0.94, relwidth=0.17)
 
-    def gerar_doc(self):
+    def gerar_doc(self):        
         #Configuração de estilo para as Entrys
         self.style = ttk.Style()
         self.style.configure("Big.TEntry", font=("Helvetica", 20))
@@ -2022,24 +2061,27 @@ class App(Funcs):
         self.img_logo.place(relx= 0.1, rely=0.02, relwidth=0.8, relheight=0.33)
 
         #Botão Gerenciar Clientes
-        self.bt_clientes = ttk.Button(self.frame_menu, text="Gerenciar Clientes", command=lambda: [self.gerenciar_clientes(), self.frame_cliente.lift()])
+        self.bt_clientes = ttk.Button(self.frame_menu, text="Gerenciar Clientes", command=lambda: [self.gerenciar_clientes(), self.frame_cliente.lift(), self.root.after(1, self.root.focus_set)])
         self.bt_clientes.place(relx= 0.05, rely=0.37, relwidth=0.9, relheight=0.05)
 
         #Botão Gerenciar Documentos
-        self.bt_documentos = ttk.Button(self.frame_menu, text="Gerenciar Documentos", command=lambda: [self.gerenciar_documentos(), self.frame_documento.lift()])
+        self.bt_documentos = ttk.Button(self.frame_menu, text="Gerenciar Documentos", command=lambda: [self.gerenciar_documentos(), self.frame_documento.lift(), self.root.after(1, self.root.focus_set)])
         self.bt_documentos.place(relx= 0.05, rely=0.44, relwidth=0.9, relheight=0.05)
 
         #Botão Clientes/Documentos
-        self.bt_clientes_doc = ttk.Button(self.frame_menu, text="Clientes/Documentos", command=lambda: [self.clientes_doc(), self.frame_clientes_doc.lift()])
+        self.bt_clientes_doc = ttk.Button(self.frame_menu, text="Clientes/Documentos", command=lambda: [self.clientes_doc(), self.frame_clientes_doc.lift(), self.root.after(1, self.root.focus_set)])
         self.bt_clientes_doc.place(relx= 0.05, rely=0.51, relwidth=0.9, relheight=0.05)
 
         #Botão Gerar Contratos e Afins
-        self.bt_contratos = ttk.Button(self.frame_menu, text="Gerar Contratos e Afins", command=lambda: [self.gerar_doc(), self.frame_gerar_doc.lift()])
+        self.bt_contratos = ttk.Button(self.frame_menu, text="Gerar Contratos e Afins", command=lambda: [self.gerar_doc(), self.frame_gerar_doc.lift(), self.root.after(1, self.root.focus_set)])
         self.bt_contratos.place(relx= 0.05, rely=0.58, relwidth=0.9, relheight=0.05)
 
         #Botão Gerar Petição
         self.bt_peticao = ttk.Button(self.frame_menu, text="Gerar Petição")
         self.bt_peticao.place(relx= 0.05, rely=0.65, relwidth=0.9, relheight=0.05)
+
+        self.switch = ttk.Checkbutton(self.frame_menu, text="Dark theme", style="Switch.TCheckbutton", command=sv_ttk.toggle_theme)
+        self.switch.place(relx= 0.05, rely=0.8)
 
         #Botão Sair
         self.bt_sair = ttk.Button(self.frame_menu, text="Sair", command=self.root.destroy, style='Accent.TButton')
